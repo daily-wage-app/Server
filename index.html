@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0d1826" />
+  <title>Daily Wage · Admin</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0d1826;--panel:#142438;--panel2:#192c42;--line:#263a50;--text:#f1f5f9;--muted:#9aabc0;--blue:#69a8ff;--green:#55d6a0;--red:#ff8e8e}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% -10%,#1a3d60 0,transparent 34%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+    button,input{font:inherit}button{cursor:pointer}.shell{max-width:1240px;margin:auto;padding:30px 22px 48px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:34px}.brand{display:flex;align-items:center;gap:13px}.mark{display:grid;place-items:center;width:42px;height:42px;border:1px solid #37628b;border-radius:14px;background:linear-gradient(145deg,#1b4c78,#162b44);font-weight:900;color:#b9dcff}.brand h1{font-size:16px;margin:0;letter-spacing:.02em}.brand p{color:var(--muted);font-size:12px;margin:2px 0 0}.top-actions{display:flex;align-items:center;gap:10px}.pill{border:1px solid var(--line);border-radius:999px;padding:7px 12px;color:var(--muted);font-size:12px}.button{border:1px solid #3e6c98;border-radius:10px;background:#1a3b5c;color:#e7f3ff;padding:10px 14px;font-weight:700}.button:hover{background:#224b72}.button.secondary{background:transparent;border-color:var(--line);color:var(--muted)}.eyebrow{color:#8bbcff;text-transform:uppercase;font-size:11px;font-weight:800;letter-spacing:.16em}.hero{margin-bottom:25px}.hero h2{font-size:clamp(27px,4vw,40px);letter-spacing:-.04em;margin:8px 0}.hero p{color:var(--muted);margin:0;max-width:650px}.login-card,.dashboard{border:1px solid var(--line);border-radius:20px;background:linear-gradient(145deg,rgba(24,43,64,.98),rgba(17,32,49,.98));box-shadow:0 18px 50px #06111e80}.login-card{max-width:500px;margin:7vh auto;padding:32px}.login-card h2{margin:0 0 8px}.login-card p{color:var(--muted)}.login-card .button{margin-top:14px;width:100%}.notice{display:none;margin:14px 0;padding:12px 14px;border:1px solid #654347;border-radius:12px;background:#39252c;color:#ffd3d3;font-size:13px}.notice.show{display:block}.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}.stat{padding:17px 18px;border:1px solid var(--line);border-radius:16px;background:rgba(20,36,56,.85)}.stat-label{color:var(--muted);font-size:12px}.stat-value{font-size:26px;font-weight:800;margin-top:5px}.toolbar{display:flex;align-items:center;gap:12px;padding:15px 16px;border-bottom:1px solid var(--line)}.search{flex:1;max-width:430px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#0e1b2b;color:var(--text);outline:none}.search:focus{border-color:var(--blue)}.result-note{margin-left:auto;color:var(--muted);font-size:12px}.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse;min-width:850px}.table th,.table td{text-align:left;padding:14px 16px;border-bottom:1px solid #20334a;vertical-align:top}.table th{position:sticky;top:0;background:#142438;color:#9fb2c9;font-size:11px;text-transform:uppercase;letter-spacing:.09em}.table td{font-size:13px}.table tbody tr:hover{background:#ffffff06}.name-cell{font-weight:750;color:#f5f8fc}.subcell{display:block;color:var(--muted);font-size:11px;margin-top:3px}.empty{padding:42px 18px;text-align:center;color:var(--muted)}.loading{color:var(--muted);padding:28px 18px}.footer-note{color:#8092a8;font-size:11px;margin:14px 4px}.hidden{display:none!important}.tag{display:inline-block;border:1px solid #31597a;border-radius:999px;padding:3px 8px;color:#b4d7ff;font-size:11px}@media(max-width:700px){.shell{padding:20px 14px 38px}.topbar{align-items:flex-start;flex-direction:column}.top-actions{width:100%;justify-content:space-between}.summary{grid-template-columns:1fr 1fr}.stat:last-child{grid-column:1/-1}.toolbar{flex-wrap:wrap}.search{max-width:none;flex-basis:100%}.result-note{margin-left:0}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section id="loginView" class="login-card" aria-labelledby="loginTitle">
+      <div class="brand"><div class="mark" aria-hidden="true">DW</div><div><h1>Daily Wage</h1><p>Private admin workspace</p></div></div>
+      <div class="eyebrow" style="margin-top:28px">Authorized access only</div>
+      <h2 id="loginTitle">Sign in to view profiles</h2>
+      <p>Use the approved administrator Google account. Profile data is not public.</p>
+      <div id="loginNotice" class="notice" role="alert"></div>
+      <button id="signInButton" class="button" type="button">Continue with Google</button>
+    </section>
+
+    <section id="dashboardView" class="hidden" aria-label="Admin dashboard">
+      <header class="topbar">
+        <div class="brand"><div class="mark" aria-hidden="true">DW</div><div><h1>Daily Wage · Admin</h1><p id="adminEmail">Authorized administrator</p></div></div>
+        <div class="top-actions"><span class="pill">Private data · Admin only</span><button id="refreshButton" class="button secondary" type="button">Refresh</button><button id="signOutButton" class="button secondary" type="button">Sign out</button></div>
+      </header>
+      <div class="hero"><div class="eyebrow">Worker directory</div><h2>User profiles</h2><p>Profile submissions collected from the Daily Wage Home page. Treat this information as confidential.</p></div>
+      <div class="summary">
+        <div class="stat"><div class="stat-label">Total profiles</div><div id="totalProfiles" class="stat-value">—</div></div>
+        <div class="stat"><div class="stat-label">Showing</div><div id="visibleProfiles" class="stat-value">—</div></div>
+        <div class="stat"><div class="stat-label">Last refreshed</div><div id="lastRefreshed" class="stat-value" style="font-size:16px">—</div></div>
+      </div>
+      <section class="dashboard">
+        <div class="toolbar"><input id="searchInput" class="search" type="search" placeholder="Search name, country, email, or phone" aria-label="Search profiles" /><span class="result-note" id="resultNote">Private admin data</span></div>
+        <div id="dataNotice" class="notice" style="margin:14px 16px" role="alert"></div>
+        <div id="tableContent" class="loading" aria-live="polite">Loading profiles…</div>
+      </section>
+      <p class="footer-note">Access is enforced by Firestore Security Rules, not only by this page. Do not download, forward, or publish profile data unnecessarily.</p>
+    </section>
+  </main>
+  <script type="module" src="./admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'dailywage172@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    function isProfileOwner(uid) {
+      return request.auth != null
+        && request.auth.uid == uid
+        && request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
+    function validProfile(uid) {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+          'uid', 'fullName', 'dateOfBirth', 'country', 'gender', 'phone', 'email',
+          'consentVersion', 'source', 'createdAt', 'consentedAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'fullName', 'dateOfBirth', 'country', 'gender', 'phone', 'email',
+          'consentVersion', 'source', 'createdAt', 'consentedAt', 'updatedAt'
+        ])
+        && data.uid == uid
+        && data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 120
+        && data.dateOfBirth is string && data.dateOfBirth.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.country is string && data.country.size() > 0 && data.country.size() <= 100
+        && data.gender in ['female', 'male', 'non_binary', 'prefer_not_to_say']
+        && data.phone is string && data.phone.size() <= 30
+        && data.email is string && data.email.size() <= 160
+        && data.consentVersion == 1
+        && data.source == 'daily-wage-app/Home'
+        && data.createdAt is timestamp
+        && data.consentedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    match /userProfiles/{uid} {
+      // A worker may read only their own document; only the verified admin can list records.
+      allow get: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+      allow list: if isAdmin();
+      allow create: if isProfileOwner(uid)
+        && validProfile(uid)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.consentedAt == request.time;
+      allow update: if isProfileOwner(uid)
+        && validProfile(uid)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.consentedAt == resource.data.consentedAt;
+      allow delete: if false;
+    }
+  }
+}
