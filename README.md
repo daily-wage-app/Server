@@ -20,7 +20,7 @@ For future rule changes, authenticate with the Firebase CLI and run `firebase de
 
 ## Page behavior and access control
 
-The dashboard signs in with Google, checks for the verified administrator email, queries profiles ordered by last update, and provides in-memory search. Firestore Security Rules enforce the same admin boundary on database reads; hiding the page alone is not the security control. No delete or bulk-export action is provided.
+The dashboard signs in with Google, checks for the verified administrator email, queries profiles ordered by last update, and provides in-memory search. On narrow screens, profile fields are shown as labeled cards instead of being hidden off-screen in a horizontally scrolling table. Firestore Security Rules enforce the same admin boundary on database reads; hiding the page alone is not the security control. No delete or bulk-export action is provided.
 
 The rules validate allowed fields and types, require consent metadata, restrict each worker to their own UID document, allow list/read-all only for the verified admin account, and deny deletes. Do not replace them with public `allow read, write: if true` rules.
 

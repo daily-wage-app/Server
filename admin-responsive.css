@@ -1,0 +1,53 @@
+@media (max-width: 700px) {
+  #tableContent.table-wrap {
+    overflow: visible;
+  }
+
+  #tableContent .table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    border-collapse: separate;
+  }
+
+  #tableContent .table thead {
+    display: none;
+  }
+
+  #tableContent .table tbody {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  #tableContent .table tbody tr {
+    display: block;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(20, 36, 56, 0.7);
+  }
+
+  #tableContent .table tbody td {
+    display: grid;
+    grid-template-columns: minmax(88px, 0.42fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #20334a;
+    overflow-wrap: anywhere;
+  }
+
+  #tableContent .table tbody td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  #tableContent .table tbody td:last-child {
+    border-bottom: 0;
+  }
+}

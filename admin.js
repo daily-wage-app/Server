@@ -66,12 +66,12 @@ function renderProfiles() {
   tableContent.className = 'table-wrap';
   const rows = visible.map(profile => `
     <tr>
-      <td><span class="name-cell">${escapeHtml(profile.fullName || '—')}</span><span class="subcell">${escapeHtml(profile.uid || '')}</span></td>
-      <td>${escapeHtml(profile.dateOfBirth || '—')}</td>
-      <td>${escapeHtml(profile.country || '—')}</td>
-      <td><span class="tag">${escapeHtml(formatGender(profile.gender))}</span></td>
-      <td>${escapeHtml(profile.email || '—')}<span class="subcell">${escapeHtml(profile.phone || '')}</span></td>
-      <td>${escapeHtml(formatDate(profile.updatedAt))}</td>
+      <td data-label="Name / ID"><span class="name-cell">${escapeHtml(profile.fullName || '—')}</span><span class="subcell">${escapeHtml(profile.uid || '')}</span></td>
+      <td data-label="Date of birth">${escapeHtml(profile.dateOfBirth || '—')}</td>
+      <td data-label="Country">${escapeHtml(profile.country || '—')}</td>
+      <td data-label="Gender"><span class="tag">${escapeHtml(formatGender(profile.gender))}</span></td>
+      <td data-label="Email / phone">${escapeHtml(profile.email || '—')}<span class="subcell">${escapeHtml(profile.phone || '')}</span></td>
+      <td data-label="Updated">${escapeHtml(formatDate(profile.updatedAt))}</td>
     </tr>`).join('');
 
   tableContent.innerHTML = `<table class="table"><thead><tr><th>Name / ID</th><th>Date of birth</th><th>Country</th><th>Gender</th><th>Email / phone</th><th>Updated</th></tr></thead><tbody>${rows}</tbody></table>`;
