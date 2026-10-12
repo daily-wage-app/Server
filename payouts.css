@@ -1,0 +1,44 @@
+.payout-panel { margin-top: 18px; }
+.payout-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 17px 18px; border-bottom: 1px solid var(--line); }
+.payout-panel-head h2 { margin: 0; font-size: 17px; }
+.payout-panel-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.payout-count { display: inline-grid; place-items: center; min-width: 25px; height: 25px; margin-left: 6px; border-radius: 50%; background: #61471c; color: #ffda89; font-size: 12px; font-weight: 800; }
+.payout-list { display: grid; gap: 12px; padding: 14px; }
+.payout-card { padding: 16px; border: 1px solid var(--line); border-radius: 15px; background: rgba(14, 27, 43, .78); }
+.payout-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.payout-name { color: var(--text); font-size: 15px; font-weight: 800; }
+.payout-uid { margin-top: 3px; color: var(--muted); font-size: 10px; word-break: break-all; }
+.payout-status { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 99px; padding: 5px 9px; color: var(--muted); font-size: 10px; font-weight: 800; white-space: nowrap; }
+.payout-status.pending { border-color: #6d5425; background: #3c321e; color: #ffda89; }
+.payout-status.processing { border-color: #315c80; background: #1c344d; color: #aad6ff; }
+.payout-status.paid { border-color: #286044; background: #183628; color: #8ce4b5; }
+.payout-status.rejected { border-color: #724043; background: #3c252d; color: #ffb4b4; }
+.payout-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 15px; }
+.payout-grid > div { min-width: 0; }
+.payout-label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 10px; }
+.payout-grid strong { display: block; color: var(--text); font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
+.payout-account-row { display: grid; grid-template-columns: 1fr minmax(150px, 220px) auto; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.payout-account-row label { color: var(--muted); font-size: 11px; }
+.payout-account-row input { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #0d1826; color: var(--text); font: inherit; font-size: 12px; }
+.payout-account-row .button { padding: 7px 10px; font-size: 11px; white-space: nowrap; }
+.payout-deadline { margin-top: 11px; color: #a9d4ff; font-size: 11px; }
+.payout-deadline.overdue { color: #ff9b9b; font-weight: 800; }
+.payout-note,.payout-refund { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.payout-refund { color: #8ce4b5; }
+.payout-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.payout-action { padding: 8px 11px; font-size: 11px; }
+.payout-action.danger { border-color: #724043; background: #3c252d; color: #ffb4b4; }
+.payout-action:disabled { cursor: wait; opacity: .55; }
+#payoutNotice[data-type="error"] { border-color: #724043; background: #3c252d; color: #ffb4b4; }
+@media (max-width: 850px) {
+  .payout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .payout-account-row { grid-template-columns: 1fr auto; }
+  .payout-account-row label { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .payout-panel-head { align-items: flex-start; flex-direction: column; }
+  .payout-card-head { flex-direction: column; }
+  .payout-account-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .payout-actions { flex-direction: column; }
+  .payout-actions button { width: 100%; }
+}

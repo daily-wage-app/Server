@@ -1,31 +1,36 @@
 # Daily Wage Server · Admin
 
-Static GitHub Pages admin dashboard for profiles submitted from `daily-wage-app/Home`.
+Static GitHub Pages admin dashboard for profile records and TrueMoney withdrawal requests. The administrator profile directory and payout queue are presented in Burmese. **This repository is a static admin UI, not a payment-processing backend.** User records, reward wallets, and withdrawal requests live in Firestore, never in Git.
 
 ## Current architecture
 
 - Firebase project: `daily-29af6`
 - Firestore database: `(default)`, Singapore region (`asia-southeast1`)
-- Collection/document: `userProfiles/{anonymousAuthUid}`
-- Worker: Firebase Anonymous sign-in; can create, update, and read only their own profile
-- Admin: verified Google account `dailywage172@gmail.com`; can query and read all profiles
-- Firebase web configuration is public client metadata; user records are stored in Firestore, **not in Git**
+- Worker authentication: Firebase Anonymous sign-in
+- Administrator: verified Google account `dailywage172@gmail.com`
 - GitHub Pages: <https://daily-wage-app.github.io/Server/> (main branch, repository root)
+- Firebase web configuration is public client metadata; never add a service-account key here.
 
-## Firebase setup status
+## Reward and withdrawal data
 
-The default Firestore database has been provisioned in Singapore. Anonymous and Google sign-in providers are enabled. Google sign-in uses the public-facing project name `Daily Wage` and support email `dailywage172@gmail.com`. The authorized Firebase Auth domain `daily-wage-app.github.io` has been added for both Home and Server Pages. The reviewed rules in `firestore.rules` have been published to the default database.
+- `userProfiles/{uid}` — profile details; only the owner can read/write their profile, and only the verified admin can list profiles.
+- `rewardWallets/{uid}` — points and last check-in/withdrawal timestamps; the owner can read it, the app can only make rules-validated reward/withdrawal transitions, and the admin can read a single wallet only when refunding a rejected request. Wallet collection listing is denied.
+- `withdrawalRequests/{requestId}` — amount, points, TrueMoney account holder name/number, status, consent version, timestamps, and admin note. A worker can query only their own requests; the admin can review the queue.
 
-For future rule changes, authenticate with the Firebase CLI and run `firebase deploy --only firestore --project daily-29af6` from this repository. `firebase.json` uses the documented single-database configuration for the project's default Firestore database.
+The app awards 1,000 points for seven consecutive **Asia/Bangkok calendar days**, at 100 points per THB. The minimum is 10 THB (1,000 points), and a user may request one withdrawal per Bangkok calendar day. User wallet balance reduction and request creation occur in one Firestore transaction. Admin transitions are `pending → processing → paid` or `pending/processing → rejected`; rejection refunds points in the same transaction and requires a reason.
 
-## Page behavior and access control
+The dashboard shows a 24-hour target/overdue indicator. An admin must review and send the TrueMoney payment manually outside this website, then mark the request `paid`. The page does **not** initiate or guarantee a transfer. Account numbers are masked until an authorized administrator chooses to reveal them.
 
-The dashboard signs in with Google, checks for the verified administrator email, queries profiles ordered by last update, and provides in-memory search. On narrow screens, profile fields are shown as labeled cards instead of being hidden off-screen in a horizontally scrolling table. Firestore Security Rules enforce the same admin boundary on database reads; hiding the page alone is not the security control. No delete or bulk-export action is provided.
+## Firestore rules deployment
 
-The rules validate allowed fields and types, require consent metadata, restrict each worker to their own UID document, allow list/read-all only for the verified admin account, and deny deletes. Do not replace them with public `allow read, write: if true` rules.
+`firestore.rules` contains the authorization and validation required for the feature. The feature will not work until the Firebase project owner reviews and deploys the updated rules. From this repository, the owner can use:
+
+```sh
+firebase deploy --only firestore --project daily-29af6
+```
+
+The rule set preserves the existing profile permissions, validates wallet transitions using server `request.time`, compares calendar days in Bangkok by applying UTC+7 before extracting the date, and uses `getAfter()` so point debits/refunds and request status writes must be atomic. Do not replace these rules with public access rules.
 
 ## Privacy and rollout
 
-Names, dates of birth, country, gender, phone, and email are sensitive personal data. Limit access to necessary administrators, retain it only as long as required, and honor applicable notice, consent, and deletion obligations. Anonymous sign-in provides a scoped UID, not proof of real-world identity. Before broad public use, configure Firebase App Check/reCAPTCHA, publish a privacy policy, establish retention/deletion procedures, and monitor Firebase quotas. Never put a Firebase Admin SDK service-account key in this static site or Git repository.
-
-Client SDK imports are pinned to Firebase JavaScript SDK `12.19.0` via Google's CDN.
+TrueMoney wallet details are sensitive financial data. Limit access to the verified administrator, avoid unnecessary exports, establish retention/deletion procedures, and publish a privacy notice. Anonymous sign-in is not identity verification and can be lost with browser data; multiple anonymous accounts may also abuse cash-equivalent rewards. For public payout use, configure durable verified worker sign-in, Firebase App Check, and an anti-abuse policy. This app does not use a TrueMoney API or automatically move funds.

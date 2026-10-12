@@ -2,6 +2,7 @@ import {
   auth, db, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
   collection, getDocs, orderBy, query
 } from './firebase.js';
+import { initPayoutAdmin } from './admin-payouts.js';
 
 const ADMIN_EMAIL = 'dailywage172@gmail.com';
 const loginView = document.getElementById('loginView');
@@ -30,15 +31,15 @@ function formatDate(value) {
   if (!value) return '—';
   const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: '2-digit' }).format(date);
+  return new Intl.DateTimeFormat('my-MM', { timeZone: 'Asia/Bangkok', year: 'numeric', month: 'short', day: '2-digit' }).format(date);
 }
 
 function formatGender(value) {
   return ({
-    female: 'Woman',
-    male: 'Man',
-    non_binary: 'Non-binary',
-    prefer_not_to_say: 'Prefer not to say'
+    female: 'အမျိုးသမီး',
+    male: 'အမျိုးသား',
+    non_binary: 'အခြားအမျိုးအစား',
+    prefer_not_to_say: 'မဖြေလိုပါ'
   })[value] || '—';
 }
 
@@ -55,44 +56,45 @@ function renderProfiles() {
   const visible = filteredProfiles();
   document.getElementById('totalProfiles').textContent = String(profiles.length);
   document.getElementById('visibleProfiles').textContent = String(visible.length);
-  document.getElementById('resultNote').textContent = `${visible.length} record${visible.length === 1 ? '' : 's'}`;
+  document.getElementById('resultNote').textContent = `ပြသထားသည် ${visible.length} ဦး`;
 
   if (!visible.length) {
     tableContent.className = 'empty';
-    tableContent.textContent = profiles.length ? 'No profiles match your search.' : 'No user profiles have been submitted yet.';
+    tableContent.textContent = profiles.length ? 'ရှာဖွေမှုနှင့် ကိုက်ညီသော ကိုယ်ရေးအချက်အလက် မရှိပါ။' : 'အသုံးပြုသူ၏ ကိုယ်ရေးအချက်အလက် မရရှိသေးပါ။';
     return;
   }
 
   tableContent.className = 'table-wrap';
   const rows = visible.map(profile => `
     <tr>
-      <td data-label="Name / ID"><span class="name-cell">${escapeHtml(profile.fullName || '—')}</span><span class="subcell">${escapeHtml(profile.uid || '')}</span></td>
-      <td data-label="Date of birth">${escapeHtml(profile.dateOfBirth || '—')}</td>
-      <td data-label="Country">${escapeHtml(profile.country || '—')}</td>
-      <td data-label="Gender"><span class="tag">${escapeHtml(formatGender(profile.gender))}</span></td>
-      <td data-label="Email / phone">${escapeHtml(profile.email || '—')}<span class="subcell">${escapeHtml(profile.phone || '')}</span></td>
-      <td data-label="Updated">${escapeHtml(formatDate(profile.updatedAt))}</td>
+      <td data-label="အမည် / ID"><span class="name-cell">${escapeHtml(profile.fullName || '—')}</span><span class="subcell">${escapeHtml(profile.uid || '')}</span></td>
+      <td data-label="မွေးသက္ကရာဇ်">${escapeHtml(profile.dateOfBirth || '—')}</td>
+      <td data-label="နိုင်ငံ">${escapeHtml(profile.country || '—')}</td>
+      <td data-label="ကျား/မ"><span class="tag">${escapeHtml(formatGender(profile.gender))}</span></td>
+      <td data-label="အီးမေးလ် / ဖုန်း">${escapeHtml(profile.email || '—')}<span class="subcell">${escapeHtml(profile.phone || '')}</span></td>
+      <td data-label="နောက်ဆုံးပြင်ဆင်ချိန်">${escapeHtml(formatDate(profile.updatedAt))}</td>
     </tr>`).join('');
 
-  tableContent.innerHTML = `<table class="table"><thead><tr><th>Name / ID</th><th>Date of birth</th><th>Country</th><th>Gender</th><th>Email / phone</th><th>Updated</th></tr></thead><tbody>${rows}</tbody></table>`;
+  tableContent.innerHTML = `<table class="table"><thead><tr><th>အမည် / ID</th><th>မွေးသက္ကရာဇ်</th><th>နိုင်ငံ</th><th>ကျား/မ</th><th>အီးမေးလ် / ဖုန်း</th><th>နောက်ဆုံးပြင်ဆင်ချိန်</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 async function loadProfiles() {
   showNotice(dataNotice, '');
   tableContent.className = 'loading';
-  tableContent.textContent = 'Loading profiles…';
+  tableContent.textContent = 'ကိုယ်ရေးအချက်အလက်များကို ဖတ်နေပါသည်…';
   refreshButton.disabled = true;
   try {
     const result = await getDocs(query(collection(db, 'userProfiles'), orderBy('updatedAt', 'desc')));
     profiles = result.docs.map(document => document.data());
-    document.getElementById('lastRefreshed').textContent = new Intl.DateTimeFormat('en', {
+    document.getElementById('lastRefreshed').textContent = new Intl.DateTimeFormat('my-MM', {
+      timeZone: 'Asia/Bangkok',
       hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short'
     }).format(new Date());
     renderProfiles();
   } catch (error) {
     tableContent.className = 'empty';
-    tableContent.textContent = 'Profiles could not be loaded.';
-    showNotice(dataNotice, `Firebase access failed: ${error.message}. Check that Firestore rules are deployed and Google sign-in is enabled for the admin account.`);
+    tableContent.textContent = 'ကိုယ်ရေးအချက်အလက်များကို ဖတ်မရပါ။';
+    showNotice(dataNotice, `Firebase ဝင်ခွင့် မရပါ: ${error.message}။ Firestore လုံခြုံရေးစည်းမျဉ်းများ ထည့်သွင်းထားခြင်းနှင့် စီမံခန့်ခွဲသူ၏ Google ဝင်ရောက်မှုကို စစ်ဆေးပါ။`);
   } finally {
     refreshButton.disabled = false;
   }
@@ -108,10 +110,10 @@ signInButton.addEventListener('click', async () => {
     const user = result.user;
     if (user.email !== ADMIN_EMAIL || !user.emailVerified) {
       await signOut(auth);
-      throw new Error(`Please sign in with the verified admin account ${ADMIN_EMAIL}.`);
+      throw new Error(`အတည်ပြုပြီးသော စီမံခန့်ခွဲသူအကောင့် ${ADMIN_EMAIL} ဖြင့် ဝင်ရောက်ပါ။`);
     }
   } catch (error) {
-    showNotice(loginNotice, error.message || 'Google sign-in failed.');
+    showNotice(loginNotice, error.message || 'Google ဖြင့် ဝင်ရောက်မရပါ။');
   } finally {
     signInButton.disabled = false;
   }
@@ -132,7 +134,7 @@ onAuthStateChanged(auth, async user => {
     await signOut(auth);
     loginView.classList.remove('hidden');
     dashboardView.classList.add('hidden');
-    showNotice(loginNotice, `Access is restricted to ${ADMIN_EMAIL}.`);
+    showNotice(loginNotice, `ဤစာမျက်နှာကို ${ADMIN_EMAIL} အကောင့်ဖြင့်သာ ဝင်ရောက်နိုင်ပါသည်။`);
     return;
   }
 
@@ -140,4 +142,5 @@ onAuthStateChanged(auth, async user => {
   dashboardView.classList.remove('hidden');
   document.getElementById('adminEmail').textContent = user.email;
   await loadProfiles();
+  await initPayoutAdmin();
 });

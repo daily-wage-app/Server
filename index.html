@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="my">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0d1826" />
   <title>Daily Wage · Admin</title>
   <link rel="stylesheet" href="./admin-responsive.css" />
+  <link rel="stylesheet" href="./payouts.css" />
   <style>
     :root{color-scheme:dark;--bg:#0d1826;--panel:#142438;--panel2:#192c42;--line:#263a50;--text:#f1f5f9;--muted:#9aabc0;--blue:#69a8ff;--green:#55d6a0;--red:#ff8e8e}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% -10%,#1a3d60 0,transparent 34%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
@@ -15,31 +16,39 @@
 <body>
   <main class="shell">
     <section id="loginView" class="login-card" aria-labelledby="loginTitle">
-      <div class="brand"><div class="mark" aria-hidden="true">DW</div><div><h1>Daily Wage</h1><p>Private admin workspace</p></div></div>
-      <div class="eyebrow" style="margin-top:28px">Authorized access only</div>
-      <h2 id="loginTitle">Sign in to view profiles</h2>
-      <p>Use the approved administrator Google account. Profile data is not public.</p>
+      <div class="brand"><div class="mark" aria-hidden="true">DW</div><div><h1>Daily Wage</h1><p>သီးသန့် စီမံခန့်ခွဲရေးနေရာ</p></div></div>
+      <div class="eyebrow" style="margin-top:28px">ခွင့်ပြုထားသူသာ ဝင်ရောက်နိုင်သည်</div>
+      <h2 id="loginTitle">ကိုယ်ရေးအချက်အလက်ကြည့်ရန် ဝင်ရောက်ပါ</h2>
+      <p>အတည်ပြုထားသော စီမံခန့်ခွဲသူ Google အကောင့်ဖြင့် ဝင်ပါ။ အသုံးပြုသူအချက်အလက်များကို အများမြင်နိုင်ခြင်းမရှိပါ။</p>
       <div id="loginNotice" class="notice" role="alert"></div>
-      <button id="signInButton" class="button" type="button">Continue with Google</button>
+      <button id="signInButton" class="button" type="button">Google ဖြင့် ဝင်ရောက်ရန်</button>
     </section>
 
-    <section id="dashboardView" class="hidden" aria-label="Admin dashboard">
+    <section id="dashboardView" class="hidden" aria-label="စီမံခန့်ခွဲရေး စာမျက်နှာ">
       <header class="topbar">
-        <div class="brand"><div class="mark" aria-hidden="true">DW</div><div><h1>Daily Wage · Admin</h1><p id="adminEmail">Authorized administrator</p></div></div>
-        <div class="top-actions"><span class="pill">Private data · Admin only</span><button id="refreshButton" class="button secondary" type="button">Refresh</button><button id="signOutButton" class="button secondary" type="button">Sign out</button></div>
+        <div class="brand"><div class="mark" aria-hidden="true">DW</div><div><h1>Daily Wage · စီမံခန့်ခွဲသူ</h1><p id="adminEmail">ခွင့်ပြုထားသော စီမံခန့်ခွဲသူ</p></div></div>
+        <div class="top-actions"><span class="pill">လျှို့ဝှက်ဒေတာ · စီမံခန့်ခွဲသူသာ</span><button id="refreshButton" class="button secondary" type="button">ပြန်ဖတ်ရန်</button><button id="signOutButton" class="button secondary" type="button">ထွက်ရန်</button></div>
       </header>
-      <div class="hero"><div class="eyebrow">Worker directory</div><h2>User profiles</h2><p>Profile submissions collected from the Daily Wage Home page. Treat this information as confidential.</p></div>
+      <div class="hero"><div class="eyebrow">အသုံးပြုသူစာရင်း</div><h2>ကိုယ်ရေးအချက်အလက်များ</h2><p>Daily Wage Home စာမျက်နှာမှ ပေးပို့ထားသော အချက်အလက်များဖြစ်သည်။ လျှို့ဝှက်အချက်အလက်အဖြစ်သာ ကိုင်တွယ်ပါ။</p></div>
       <div class="summary">
-        <div class="stat"><div class="stat-label">Total profiles</div><div id="totalProfiles" class="stat-value">—</div></div>
-        <div class="stat"><div class="stat-label">Showing</div><div id="visibleProfiles" class="stat-value">—</div></div>
-        <div class="stat"><div class="stat-label">Last refreshed</div><div id="lastRefreshed" class="stat-value" style="font-size:16px">—</div></div>
+        <div class="stat"><div class="stat-label">စုစုပေါင်းအသုံးပြုသူ</div><div id="totalProfiles" class="stat-value">—</div></div>
+        <div class="stat"><div class="stat-label">ပြသထားသူ</div><div id="visibleProfiles" class="stat-value">—</div></div>
+        <div class="stat"><div class="stat-label">နောက်ဆုံးပြန်ဖတ်ချိန်</div><div id="lastRefreshed" class="stat-value" style="font-size:16px">—</div></div>
       </div>
       <section class="dashboard">
-        <div class="toolbar"><input id="searchInput" class="search" type="search" placeholder="Search name, country, email, or phone" aria-label="Search profiles" /><span class="result-note" id="resultNote">Private admin data</span></div>
+        <div class="toolbar"><input id="searchInput" class="search" type="search" placeholder="အမည်၊ နိုင်ငံ၊ အီးမေးလ် သို့မဟုတ် ဖုန်းဖြင့် ရှာရန်" aria-label="ကိုယ်ရေးအချက်အလက် ရှာရန်" /><span class="result-note" id="resultNote">လျှို့ဝှက်စီမံခန့်ခွဲမှုဒေတာ</span></div>
         <div id="dataNotice" class="notice" style="margin:14px 16px" role="alert"></div>
-        <div id="tableContent" class="loading" aria-live="polite">Loading profiles…</div>
+        <div id="tableContent" class="loading" aria-live="polite">ကိုယ်ရေးအချက်အလက်များကို ဖတ်နေပါသည်…</div>
       </section>
-      <p class="footer-note">Access is enforced by Firestore Security Rules, not only by this page. Do not download, forward, or publish profile data unnecessarily.</p>
+      <section class="dashboard payout-panel" aria-labelledby="payoutHeading">
+        <div class="payout-panel-head">
+          <div><h2 id="payoutHeading">TrueMoney ငွေထုတ်တောင်းဆိုမှုများ <span class="payout-count" id="pendingPayoutCount">0</span></h2><p>တောင်းဆိုသည့်အခါ အမှတ်များ ဖြတ်တောက်မည်။ ပယ်ချပါက အမှတ်များကို အလိုအလျောက် ပြန်အမ်းမည်။ TrueMoney ငွေလွှဲခြင်းကို အက်ပ်မှ မဟုတ်ဘဲ ကိုယ်တိုင်လုပ်ဆောင်ရမည်။</p></div>
+          <button id="refreshPayoutsButton" class="button secondary" type="button">တောင်းဆိုမှုများ ပြန်ဖတ်ရန်</button>
+        </div>
+        <div id="payoutNotice" class="notice" style="margin:14px 16px" role="alert" hidden></div>
+        <div id="payoutQueue" class="loading" aria-live="polite">တောင်းဆိုမှုများကို ဖတ်နေပါသည်…</div>
+      </section>
+      <p class="footer-note">ဝင်ခွင့်ကို ဤစာမျက်နှာတစ်ခုတည်းမဟုတ်ဘဲ Firestore လုံခြုံရေးစည်းမျဉ်းများကလည်း ကန့်သတ်ထားသည်။ ကိုယ်ရေးအချက်အလက်များကို မလိုအပ်ဘဲ ဒေါင်းလုဒ်လုပ်ခြင်း၊ ပေးပို့ခြင်း သို့မဟုတ် ထုတ်ပြန်ခြင်း မပြုပါနှင့်။</p>
     </section>
   </main>
   <script type="module" src="./admin.js"></script>

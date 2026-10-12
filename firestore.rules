@@ -1,16 +1,37 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     function isAdmin() {
-      return request.auth != null
+      return isSignedIn()
         && request.auth.token.email == 'dailywage172@gmail.com'
         && request.auth.token.email_verified == true;
     }
 
-    function isProfileOwner(uid) {
-      return request.auth != null
+    function isWorker(uid) {
+      return isSignedIn()
         && request.auth.uid == uid
         && request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
+    function profilePath(uid) {
+      return /databases/$(database)/documents/userProfiles/$(uid);
+    }
+
+    function walletPath(uid) {
+      return /databases/$(database)/documents/rewardWallets/$(uid);
+    }
+
+    function withdrawalPath(requestId) {
+      return /databases/$(database)/documents/withdrawalRequests/$(requestId);
+    }
+
+    // Reward days and once-per-day withdrawal limits use Thailand local calendar days.
+    function bangkokDayNumber(value) {
+      return (value + duration.value(7, 'h')).date().toMillis();
     }
 
     function validProfile(uid) {
@@ -37,18 +58,252 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
+    function validWalletShape(data, uid) {
+      return data.keys().hasAll([
+          'uid', 'pointsBalance', 'streakCount', 'lastCheckInAt', 'lastWithdrawalAt',
+          'lastWithdrawalRequestId', 'lastRefundRequestId', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'pointsBalance', 'streakCount', 'lastCheckInAt', 'lastWithdrawalAt',
+          'lastWithdrawalRequestId', 'lastRefundRequestId', 'createdAt', 'updatedAt'
+        ])
+        && data.uid == uid
+        && data.pointsBalance is int && data.pointsBalance >= 0
+        && data.streakCount is int && data.streakCount >= 0 && data.streakCount <= 6
+        && (data.lastCheckInAt == null || data.lastCheckInAt is timestamp)
+        && (data.lastWithdrawalAt == null || data.lastWithdrawalAt is timestamp)
+        && (data.lastWithdrawalRequestId == null || data.lastWithdrawalRequestId is string)
+        && (data.lastRefundRequestId == null || data.lastRefundRequestId is string)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function validInitialWallet(uid) {
+      let data = request.resource.data;
+      return validWalletShape(data, uid)
+        && data.pointsBalance == 0
+        && data.streakCount == 0
+        && data.lastCheckInAt == null
+        && data.lastWithdrawalAt == null
+        && data.lastWithdrawalRequestId == null
+        && data.lastRefundRequestId == null
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    function validCheckInWalletUpdate(uid) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let firstCheckIn = before.lastCheckInAt == null;
+      let dayDifference = firstCheckIn
+        ? 0
+        : bangkokDayNumber(request.time) - bangkokDayNumber(before.lastCheckInAt);
+      let nextStreak = firstCheckIn || dayDifference > 86400000 ? 1 : before.streakCount + 1;
+      let earnsReward = nextStreak == 7;
+      return validWalletShape(after, uid)
+        && after.diff(before).affectedKeys().hasOnly([
+          'pointsBalance', 'streakCount', 'lastCheckInAt', 'updatedAt'
+        ])
+        && (firstCheckIn || dayDifference > 0)
+        && after.pointsBalance == before.pointsBalance + (earnsReward ? 1000 : 0)
+        && after.streakCount == (earnsReward ? 0 : nextStreak)
+        && after.lastCheckInAt == request.time
+        && after.lastWithdrawalAt == before.lastWithdrawalAt
+        && after.lastWithdrawalRequestId == before.lastWithdrawalRequestId
+        && after.lastRefundRequestId == before.lastRefundRequestId
+        && after.createdAt == before.createdAt
+        && after.updatedAt == request.time;
+    }
+
+    function validWithdrawalWalletUpdate(uid) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let requestId = after.lastWithdrawalRequestId;
+      return requestId is string
+        && requestId.size() > 0
+        && existsAfter(withdrawalPath(requestId))
+        && after.diff(before).affectedKeys().hasOnly([
+          'pointsBalance', 'lastWithdrawalAt', 'lastWithdrawalRequestId', 'updatedAt'
+        ])
+        && after.pointsBalance == before.pointsBalance
+          - getAfter(withdrawalPath(requestId)).data.pointsRequested
+        && after.lastCheckInAt == before.lastCheckInAt
+        && after.streakCount == before.streakCount
+        && after.lastWithdrawalAt == request.time
+        && after.lastWithdrawalRequestId != before.lastWithdrawalRequestId
+        && after.lastRefundRequestId == before.lastRefundRequestId
+        && after.createdAt == before.createdAt
+        && after.updatedAt == request.time
+        && (before.lastWithdrawalAt == null
+          || bangkokDayNumber(request.time) > bangkokDayNumber(before.lastWithdrawalAt))
+        && getAfter(withdrawalPath(requestId)).data.uid == uid
+        && getAfter(withdrawalPath(requestId)).data.requestId == requestId
+        && getAfter(withdrawalPath(requestId)).data.status == 'pending'
+        && getAfter(withdrawalPath(requestId)).data.pointsRequested is int;
+    }
+
+    function validRefundWalletUpdate(uid) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let requestId = after.lastRefundRequestId;
+      return requestId is string
+        && requestId.size() > 0
+        && exists(withdrawalPath(requestId))
+        && existsAfter(withdrawalPath(requestId))
+        && after.diff(before).affectedKeys().hasOnly([
+          'pointsBalance', 'lastRefundRequestId', 'updatedAt'
+        ])
+        && after.pointsBalance == before.pointsBalance
+          + get(withdrawalPath(requestId)).data.pointsRequested
+        && after.lastRefundRequestId == requestId
+        && after.updatedAt == request.time
+        && after.uid == before.uid
+        && after.streakCount == before.streakCount
+        && after.lastCheckInAt == before.lastCheckInAt
+        && after.lastWithdrawalAt == before.lastWithdrawalAt
+        && after.lastWithdrawalRequestId == before.lastWithdrawalRequestId
+        && after.createdAt == before.createdAt
+        && get(withdrawalPath(requestId)).data.uid == uid
+        && get(withdrawalPath(requestId)).data.status in ['pending', 'processing']
+        && get(withdrawalPath(requestId)).data.refunded == false
+        && getAfter(withdrawalPath(requestId)).data.status == 'rejected'
+        && getAfter(withdrawalPath(requestId)).data.refunded == true;
+    }
+
+    function validWithdrawalRequest(uid, requestId) {
+      let data = request.resource.data;
+      let walletBefore = get(walletPath(uid)).data;
+      let walletAfter = getAfter(walletPath(uid)).data;
+      return data.keys().hasAll([
+          'requestId', 'uid', 'userFullName', 'pointsRequested', 'amountBaht', 'currency',
+          'walletProvider', 'walletAccountName', 'walletAccountNumber', 'status', 'refunded',
+          'adminNote', 'consentVersion', 'consentedAt', 'createdAt', 'updatedAt',
+          'reviewedAt', 'processedAt', 'rejectedAt'
+        ])
+        && data.keys().hasOnly([
+          'requestId', 'uid', 'userFullName', 'pointsRequested', 'amountBaht', 'currency',
+          'walletProvider', 'walletAccountName', 'walletAccountNumber', 'status', 'refunded',
+          'adminNote', 'consentVersion', 'consentedAt', 'createdAt', 'updatedAt',
+          'reviewedAt', 'processedAt', 'rejectedAt'
+        ])
+        && data.requestId == requestId
+        && data.uid == uid
+        && data.userFullName == get(profilePath(uid)).data.fullName
+        && data.pointsRequested is int && data.pointsRequested >= 1000
+        && data.amountBaht is int && data.amountBaht >= 10
+        && data.pointsRequested == data.amountBaht * 100
+        && data.currency == 'THB'
+        && data.walletProvider == 'TrueMoney Wallet'
+        && data.walletAccountName is string
+        && data.walletAccountName.size() >= 2 && data.walletAccountName.size() <= 120
+        && data.walletAccountNumber is string
+        && data.walletAccountNumber.matches('^[0-9]{8,15}$')
+        && data.status == 'pending'
+        && data.refunded == false
+        && data.adminNote == ''
+        && data.consentVersion == 1
+        && data.consentedAt == request.time
+        && data.createdAt == request.time
+        && data.updatedAt == request.time
+        && data.reviewedAt == null
+        && data.processedAt == null
+        && data.rejectedAt == null
+        && exists(profilePath(uid))
+        && exists(walletPath(uid))
+        && walletBefore.uid == uid
+        && walletBefore.pointsBalance >= data.pointsRequested
+        && (walletBefore.lastWithdrawalAt == null
+          || bangkokDayNumber(request.time) > bangkokDayNumber(walletBefore.lastWithdrawalAt))
+        && walletAfter.uid == uid
+        && walletAfter.pointsBalance == walletBefore.pointsBalance - data.pointsRequested
+        && walletAfter.lastWithdrawalAt == request.time
+        && walletAfter.lastWithdrawalRequestId == requestId
+        && walletAfter.updatedAt == request.time;
+    }
+
+    function validRejectedRequestRefund(uid, requestId) {
+      let walletBefore = get(walletPath(uid)).data;
+      let walletAfter = getAfter(walletPath(uid)).data;
+      return exists(walletPath(uid))
+        && existsAfter(walletPath(uid))
+        && walletAfter.uid == uid
+        && walletAfter.pointsBalance == walletBefore.pointsBalance + resource.data.pointsRequested
+        && walletAfter.lastRefundRequestId == requestId
+        && walletAfter.updatedAt == request.time;
+    }
+
+    function validAdminWithdrawalUpdate(requestId) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let toProcessing = before.status == 'pending' && after.status == 'processing';
+      let toPaid = before.status == 'processing' && after.status == 'paid';
+      let toRejected = before.status in ['pending', 'processing'] && after.status == 'rejected';
+      return isAdmin()
+        && after.diff(before).affectedKeys().hasOnly([
+          'status', 'refunded', 'adminNote', 'updatedAt', 'reviewedAt', 'processedAt', 'rejectedAt'
+        ])
+        && after.requestId == before.requestId
+        && after.uid == before.uid
+        && after.pointsRequested == before.pointsRequested
+        && after.amountBaht == before.amountBaht
+        && after.walletAccountNumber == before.walletAccountNumber
+        && after.walletAccountName == before.walletAccountName
+        && after.updatedAt == request.time
+        && after.adminNote is string && after.adminNote.size() <= 500
+        && (toProcessing
+          ? after.refunded == false
+            && after.reviewedAt == request.time
+            && after.processedAt == before.processedAt
+            && after.rejectedAt == before.rejectedAt
+          : toPaid
+            ? after.refunded == false
+              && after.reviewedAt == before.reviewedAt
+              && after.processedAt == request.time
+              && after.rejectedAt == before.rejectedAt
+            : toRejected
+              ? after.refunded == true
+                && after.adminNote.size() >= 3
+                && after.reviewedAt == (before.reviewedAt == null ? request.time : before.reviewedAt)
+                && after.processedAt == before.processedAt
+                && after.rejectedAt == request.time
+                && validRejectedRequestRefund(before.uid, requestId)
+              : false);
+    }
+
     match /userProfiles/{uid} {
-      // A worker may read only their own document; only the verified admin can list records.
-      allow get: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+      allow get: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
       allow list: if isAdmin();
-      allow create: if isProfileOwner(uid)
+      allow create: if isWorker(uid)
         && validProfile(uid)
         && request.resource.data.createdAt == request.time
         && request.resource.data.consentedAt == request.time;
-      allow update: if isProfileOwner(uid)
+      allow update: if isWorker(uid)
         && validProfile(uid)
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.consentedAt == resource.data.consentedAt;
+      allow delete: if false;
+    }
+
+    match /rewardWallets/{uid} {
+      allow get: if isAdmin() || isWorker(uid);
+      allow list: if false;
+      allow create: if isWorker(uid)
+        && exists(profilePath(uid))
+        && validInitialWallet(uid);
+      allow update: if (isWorker(uid)
+          && exists(profilePath(uid))
+          && validWalletShape(request.resource.data, uid)
+          && (validCheckInWalletUpdate(uid) || validWithdrawalWalletUpdate(uid)))
+        || (isAdmin() && validRefundWalletUpdate(uid));
+      allow delete: if false;
+    }
+
+    match /withdrawalRequests/{requestId} {
+      allow get: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isWorker(request.resource.data.uid)
+        && validWithdrawalRequest(request.resource.data.uid, requestId);
+      allow update: if validAdminWithdrawalUpdate(requestId);
       allow delete: if false;
     }
   }
