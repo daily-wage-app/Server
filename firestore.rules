@@ -25,6 +25,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/rewardWallets/$(uid);
     }
 
+    function deviceClaimPath(deviceId) {
+      return /databases/$(database)/documents/deviceCheckInClaims/$(deviceId);
+    }
+
     function withdrawalPath(requestId) {
       return /databases/$(database)/documents/withdrawalRequests/$(requestId);
     }
@@ -64,7 +68,7 @@ service cloud.firestore {
           'lastWithdrawalRequestId', 'lastRefundRequestId', 'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'uid', 'pointsBalance', 'streakCount', 'lastCheckInAt', 'lastWithdrawalAt',
+          'uid', 'pointsBalance', 'streakCount', 'lastCheckInAt', 'lastCheckInDeviceId', 'lastWithdrawalAt',
           'lastWithdrawalRequestId', 'lastRefundRequestId', 'createdAt', 'updatedAt'
         ])
         && data.uid == uid
@@ -72,6 +76,9 @@ service cloud.firestore {
         && data.streakCount is int && data.streakCount >= 0 && data.streakCount <= 6
         && (data.lastCheckInAt == null || data.lastCheckInAt is timestamp)
         && (data.lastWithdrawalAt == null || data.lastWithdrawalAt is timestamp)
+        && (data.get('lastCheckInDeviceId', null) == null
+          || (data.get('lastCheckInDeviceId', '') is string
+            && data.get('lastCheckInDeviceId', '').matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')))
         && (data.lastWithdrawalRequestId == null || data.lastWithdrawalRequestId is string)
         && (data.lastRefundRequestId == null || data.lastRefundRequestId is string)
         && data.createdAt is timestamp
@@ -84,6 +91,7 @@ service cloud.firestore {
         && data.pointsBalance == 0
         && data.streakCount == 0
         && data.lastCheckInAt == null
+        && data.get('lastCheckInDeviceId', null) == null
         && data.lastWithdrawalAt == null
         && data.lastWithdrawalRequestId == null
         && data.lastRefundRequestId == null
@@ -94,6 +102,8 @@ service cloud.firestore {
     function validCheckInWalletUpdate(uid) {
       let before = resource.data;
       let after = request.resource.data;
+      let deviceId = after.get('lastCheckInDeviceId', 'invalid-device-id');
+      let claimPath = deviceClaimPath(deviceId);
       let firstCheckIn = before.lastCheckInAt == null;
       let dayDifference = firstCheckIn
         ? 0
@@ -102,17 +112,64 @@ service cloud.firestore {
       let earnsReward = nextStreak == 7;
       return validWalletShape(after, uid)
         && after.diff(before).affectedKeys().hasOnly([
-          'pointsBalance', 'streakCount', 'lastCheckInAt', 'updatedAt'
+          'pointsBalance', 'streakCount', 'lastCheckInAt', 'lastCheckInDeviceId', 'updatedAt'
         ])
         && (firstCheckIn || dayDifference > 0)
         && after.pointsBalance == before.pointsBalance + (earnsReward ? 1000 : 0)
         && after.streakCount == (earnsReward ? 0 : nextStreak)
         && after.lastCheckInAt == request.time
+        && deviceId is string
+        && deviceId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+        && existsAfter(claimPath)
+        && getAfter(claimPath).data.uid == uid
+        && getAfter(claimPath).data.deviceId == deviceId
+        && getAfter(claimPath).data.dayNumber == bangkokDayNumber(request.time)
         && after.lastWithdrawalAt == before.lastWithdrawalAt
         && after.lastWithdrawalRequestId == before.lastWithdrawalRequestId
         && after.lastRefundRequestId == before.lastRefundRequestId
         && after.createdAt == before.createdAt
         && after.updatedAt == request.time;
+    }
+
+    function validDeviceClaimCreate(deviceId) {
+      let data = request.resource.data;
+      let uid = data.get('uid', '');
+      let requestedDeviceId = data.get('deviceId', '');
+      let dayNumber = data.get('dayNumber', 0);
+      return data.keys().hasAll(['uid', 'deviceId', 'dayNumber', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'deviceId', 'dayNumber', 'createdAt', 'updatedAt'])
+        && isWorker(uid)
+        && requestedDeviceId == deviceId
+        && requestedDeviceId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+        && dayNumber is int && dayNumber == bangkokDayNumber(request.time)
+        && data.createdAt == request.time
+        && data.updatedAt == request.time
+        && existsAfter(walletPath(uid))
+        && getAfter(walletPath(uid)).data.uid == uid
+        && getAfter(walletPath(uid)).data.lastCheckInAt == request.time
+        && getAfter(walletPath(uid)).data.lastCheckInDeviceId == requestedDeviceId;
+    }
+
+    function validDeviceClaimUpdate(deviceId) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let uid = after.get('uid', '');
+      let requestedDeviceId = after.get('deviceId', '');
+      let dayNumber = after.get('dayNumber', 0);
+      return after.keys().hasAll(['uid', 'deviceId', 'dayNumber', 'createdAt', 'updatedAt'])
+        && after.keys().hasOnly(['uid', 'deviceId', 'dayNumber', 'createdAt', 'updatedAt'])
+        && isWorker(uid)
+        && before.deviceId == deviceId
+        && before.dayNumber is int && before.dayNumber < dayNumber
+        && requestedDeviceId == deviceId
+        && requestedDeviceId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+        && dayNumber is int && dayNumber == bangkokDayNumber(request.time)
+        && after.createdAt == before.createdAt
+        && after.updatedAt == request.time
+        && existsAfter(walletPath(uid))
+        && getAfter(walletPath(uid)).data.uid == uid
+        && getAfter(walletPath(uid)).data.lastCheckInAt == request.time
+        && getAfter(walletPath(uid)).data.lastCheckInDeviceId == requestedDeviceId;
     }
 
     function validWithdrawalWalletUpdate(uid) {
@@ -295,6 +352,14 @@ service cloud.firestore {
           && validWalletShape(request.resource.data, uid)
           && (validCheckInWalletUpdate(uid) || validWithdrawalWalletUpdate(uid)))
         || (isAdmin() && validRefundWalletUpdate(uid));
+      allow delete: if false;
+    }
+
+    match /deviceCheckInClaims/{deviceId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if validDeviceClaimCreate(deviceId);
+      allow update: if validDeviceClaimUpdate(deviceId);
       allow delete: if false;
     }
 
