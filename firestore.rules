@@ -7,8 +7,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn()
-        && request.auth.token.email == 'dailywage172@gmail.com'
-        && request.auth.token.email_verified == true;
+        && request.auth.token.get('email', '') == 'dailywage172@gmail.com'
+        && request.auth.token.get('email_verified', false) == true;
     }
 
     function isWorker(uid) {
@@ -33,6 +33,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/withdrawalRequests/$(requestId);
     }
 
+    function referralPath(inviteeUid) {
+      return /databases/$(database)/documents/referralClaims/$(inviteeUid);
+    }
+
     // Reward days and once-per-day withdrawal limits use Thailand local calendar days.
     function bangkokDayNumber(value) {
       return (value + duration.value(7, 'h')).date().toMillis();
@@ -46,7 +50,7 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'uid', 'fullName', 'dateOfBirth', 'country', 'gender', 'phone', 'email',
-          'consentVersion', 'source', 'createdAt', 'consentedAt', 'updatedAt'
+          'consentVersion', 'source', 'createdAt', 'consentedAt', 'updatedAt', 'referredByUid'
         ])
         && data.uid == uid
         && data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 120
@@ -57,6 +61,11 @@ service cloud.firestore {
         && data.email is string && data.email.size() <= 160
         && data.consentVersion == 1
         && data.source == 'daily-wage-app/Home'
+        && (!data.keys().hasAny(['referredByUid'])
+          || (data.referredByUid is string
+            && data.referredByUid.matches('^[A-Za-z0-9]{28}$')
+            && data.referredByUid != uid
+            && exists(profilePath(data.referredByUid))))
         && data.createdAt is timestamp
         && data.consentedAt is timestamp
         && data.updatedAt == request.time;
@@ -69,12 +78,22 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'uid', 'pointsBalance', 'streakCount', 'lastCheckInAt', 'lastCheckInDeviceId', 'lastWithdrawalAt',
-          'lastWithdrawalRequestId', 'lastRefundRequestId', 'createdAt', 'updatedAt'
+          'lastWithdrawalRequestId', 'lastRefundRequestId', 'createdAt', 'updatedAt',
+          'totalCheckIns', 'completedSevenDayCycles', 'lastFreePassAt',
+          'lastReferralClaimId', 'lastReferralClaimAt', 'lastSevenDayCycleAt'
         ])
         && data.uid == uid
         && data.pointsBalance is int && data.pointsBalance >= 0
         && data.streakCount is int && data.streakCount >= 0 && data.streakCount <= 6
+        && data.get('totalCheckIns', 0) is int && data.get('totalCheckIns', 0) >= 0 && data.get('totalCheckIns', 0) <= 1000000000
+        && data.get('completedSevenDayCycles', 0) is int && data.get('completedSevenDayCycles', 0) >= 0 && data.get('completedSevenDayCycles', 0) <= data.get('totalCheckIns', 0)
         && (data.lastCheckInAt == null || data.lastCheckInAt is timestamp)
+        && (data.get('lastFreePassAt', null) == null || data.get('lastFreePassAt', null) is timestamp)
+        && (data.get('lastReferralClaimId', null) == null
+          || (data.get('lastReferralClaimId', '') is string
+            && data.get('lastReferralClaimId', '').matches('^[A-Za-z0-9]{1,128}$')))
+        && (data.get('lastReferralClaimAt', null) == null || data.get('lastReferralClaimAt', null) is timestamp)
+        && (data.get('lastSevenDayCycleAt', null) == null || data.get('lastSevenDayCycleAt', null) is timestamp)
         && (data.lastWithdrawalAt == null || data.lastWithdrawalAt is timestamp)
         && (data.get('lastCheckInDeviceId', null) == null
           || (data.get('lastCheckInDeviceId', '') is string
@@ -90,8 +109,14 @@ service cloud.firestore {
       return validWalletShape(data, uid)
         && data.pointsBalance == 0
         && data.streakCount == 0
+        && data.get('totalCheckIns', 0) == 0
+        && data.get('completedSevenDayCycles', 0) == 0
         && data.lastCheckInAt == null
         && data.get('lastCheckInDeviceId', null) == null
+        && data.get('lastFreePassAt', null) == null
+        && data.get('lastReferralClaimId', null) == null
+        && data.get('lastReferralClaimAt', null) == null
+        && data.get('lastSevenDayCycleAt', null) == null
         && data.lastWithdrawalAt == null
         && data.lastWithdrawalRequestId == null
         && data.lastRefundRequestId == null
@@ -99,36 +124,170 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
+    function checkInState(before) {
+      let gap = before.lastCheckInAt == null
+        ? 0
+        : bangkokDayNumber(request.time) - bangkokDayNumber(before.lastCheckInAt);
+      let lastUsed = before.get('lastFreePassAt', null);
+      let passReady = lastUsed == null || request.time >= lastUsed + duration.value(30, 'd');
+      let passUsed = before.lastCheckInAt != null && gap == 172800000 && before.streakCount > 0 && passReady;
+      return {
+        'gap': gap,
+        'passUsed': passUsed,
+        'nextStreak': before.lastCheckInAt == null || (gap > 86400000 && !passUsed) ? 1 : before.streakCount + 1
+      };
+    }
+
     function validCheckInWalletUpdate(uid) {
       let before = resource.data;
       let after = request.resource.data;
       let deviceId = after.get('lastCheckInDeviceId', 'invalid-device-id');
-      let claimPath = deviceClaimPath(deviceId);
+      let claim = deviceClaimPath(deviceId);
+      let deviceClaim = getAfter(claim).data;
       let firstCheckIn = before.lastCheckInAt == null;
-      let dayDifference = firstCheckIn
-        ? 0
-        : bangkokDayNumber(request.time) - bangkokDayNumber(before.lastCheckInAt);
-      let nextStreak = firstCheckIn || dayDifference > 86400000 ? 1 : before.streakCount + 1;
-      let earnsReward = nextStreak == 7;
+      let state = checkInState(before);
+      let nextStreak = state.nextStreak;
+      let completesCycle = nextStreak == 7;
+      let passUsed = state.passUsed;
       return validWalletShape(after, uid)
         && after.diff(before).affectedKeys().hasOnly([
-          'pointsBalance', 'streakCount', 'lastCheckInAt', 'lastCheckInDeviceId', 'updatedAt'
+          'pointsBalance', 'streakCount', 'lastCheckInAt', 'lastCheckInDeviceId', 'lastFreePassAt',
+          'totalCheckIns', 'completedSevenDayCycles', 'lastSevenDayCycleAt', 'updatedAt'
         ])
-        && (firstCheckIn || dayDifference > 0)
-        && after.pointsBalance == before.pointsBalance + (earnsReward ? 1000 : 0)
-        && after.streakCount == (earnsReward ? 0 : nextStreak)
+        && (firstCheckIn || state.gap > 0)
+        && after.pointsBalance == before.pointsBalance + (completesCycle ? 400 : 100)
+        && after.streakCount == (completesCycle ? 0 : nextStreak)
+        && after.totalCheckIns == before.get('totalCheckIns', 0) + 1
+        && after.completedSevenDayCycles == before.get('completedSevenDayCycles', 0) + (completesCycle ? 1 : 0)
+        && after.get('lastSevenDayCycleAt', null) == (completesCycle ? request.time : before.get('lastSevenDayCycleAt', null))
+        && after.lastFreePassAt == (passUsed ? request.time : before.get('lastFreePassAt', null))
         && after.lastCheckInAt == request.time
         && deviceId is string
         && deviceId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
-        && existsAfter(claimPath)
-        && getAfter(claimPath).data.uid == uid
-        && getAfter(claimPath).data.deviceId == deviceId
-        && getAfter(claimPath).data.dayNumber == bangkokDayNumber(request.time)
+        && existsAfter(claim)
+        && deviceClaim.uid == uid
+        && deviceClaim.deviceId == deviceId
+        && deviceClaim.dayNumber == bangkokDayNumber(request.time)
         && after.lastWithdrawalAt == before.lastWithdrawalAt
         && after.lastWithdrawalRequestId == before.lastWithdrawalRequestId
         && after.lastRefundRequestId == before.lastRefundRequestId
         && after.createdAt == before.createdAt
         && after.updatedAt == request.time;
+    }
+
+    function validReferralClaimCreate(inviteeUid) {
+      let data = request.resource.data;
+      let inviterUid = data.get('inviterUid', '');
+      return isWorker(inviteeUid)
+        && data.keys().hasAll(['inviteeUid', 'inviterUid', 'status', 'rewardPoints', 'createdAt', 'updatedAt', 'awardedAt'])
+        && data.keys().hasOnly(['inviteeUid', 'inviterUid', 'status', 'rewardPoints', 'createdAt', 'updatedAt', 'awardedAt'])
+        && data.inviteeUid == inviteeUid
+        && inviterUid is string && inviterUid != inviteeUid
+        && inviterUid.matches('^[A-Za-z0-9]{28}$')
+        && exists(profilePath(inviteeUid))
+        && get(profilePath(inviteeUid)).data.get('referredByUid', null) == inviterUid
+        && exists(profilePath(inviterUid))
+        && exists(walletPath(inviterUid))
+        && data.status == 'pending' && data.rewardPoints == 100
+        && data.createdAt == request.time && data.updatedAt == request.time && data.awardedAt == null
+        && data.inviteeUid == inviteeUid;
+    }
+
+    function validReferralInviteeAward(inviteeUid) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let inviterUid = before.inviterUid;
+      let inviteeBefore = get(walletPath(inviteeUid)).data;
+      let inviteeAfter = getAfter(walletPath(inviteeUid)).data;
+      return isWorker(inviteeUid)
+        && before.status == 'pending' && after.status == 'invitee_awarded'
+        && before.inviteeUid == inviteeUid && before.inviterUid == inviterUid
+        && before.rewardPoints == 100 && after.rewardPoints == before.rewardPoints
+        && after.diff(before).affectedKeys().hasOnly(['status', 'updatedAt', 'awardedAt'])
+        && after.createdAt == before.createdAt
+        && after.updatedAt == request.time && after.awardedAt == request.time
+        && get(profilePath(inviteeUid)).data.get('referredByUid', null) == inviterUid
+        && inviterUid != inviteeUid
+        && inviteeBefore.get('completedSevenDayCycles', 0) > 0
+        && inviteeBefore.get('lastSevenDayCycleAt', null) is timestamp
+        && inviteeBefore.lastCheckInAt is timestamp
+        && inviteeAfter.pointsBalance == inviteeBefore.pointsBalance + 100
+        && inviteeAfter.updatedAt == request.time;
+    }
+
+    function validInviteeReferralWalletUpdate(uid) {
+      let claim = referralPath(uid);
+      return isWorker(uid)
+        && exists(claim)
+        && validInviteeReferralWalletUpdateWithClaim(uid, claim);
+    }
+
+    function validInviteeReferralWalletUpdateWithClaim(uid, claim) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let referralBefore = get(claim).data;
+      let referralAfter = getAfter(claim).data;
+      return referralBefore.inviteeUid == uid
+        && referralBefore.status == 'pending'
+        && referralAfter.status == 'invitee_awarded'
+        && get(profilePath(uid)).data.get('referredByUid', null) == referralBefore.inviterUid
+        && before.get('completedSevenDayCycles', 0) > 0
+        && before.get('lastSevenDayCycleAt', null) is timestamp
+        && before.lastCheckInAt is timestamp
+        && after.diff(before).affectedKeys().hasOnly(['pointsBalance', 'updatedAt'])
+        && after.pointsBalance == before.pointsBalance + 100
+        && after.updatedAt == request.time;
+    }
+
+    function validReferralInviterWalletUpdate(inviterUid) {
+      let after = request.resource.data;
+      let inviteeUid = after.get('lastReferralClaimId', 'invalid-referral-claim');
+      let claim = referralPath(inviteeUid);
+      return isWorker(inviterUid)
+        && inviteeUid is string
+        && inviteeUid.matches('^[A-Za-z0-9]{1,128}$')
+        && exists(claim)
+        && validReferralInviterWalletUpdateWithClaim(inviterUid, inviteeUid, claim);
+    }
+
+    function validReferralInviterWalletUpdateWithClaim(inviterUid, inviteeUid, claim) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let referralBefore = get(claim).data;
+      let referralAfter = getAfter(claim).data;
+      return isWorker(inviterUid)
+        && validWalletShape(after, inviterUid)
+        && referralBefore.inviterUid == inviterUid
+        && referralBefore.status == 'invitee_awarded'
+        && referralAfter.status == 'awarded'
+        && after.diff(before).affectedKeys().hasOnly(['pointsBalance', 'lastReferralClaimId', 'lastReferralClaimAt', 'updatedAt'])
+        && after.pointsBalance == before.pointsBalance + 100
+        && after.lastReferralClaimId == inviteeUid
+        && after.lastReferralClaimAt == request.time
+        && after.updatedAt == request.time;
+    }
+
+    function validReferralInviterClaim(inviteeUid) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let inviterUid = before.inviterUid;
+      let walletBefore = get(walletPath(inviterUid)).data;
+      let walletAfter = getAfter(walletPath(inviterUid)).data;
+      return isWorker(inviterUid)
+        && before.status == 'invitee_awarded' && after.status == 'awarded'
+        && before.inviteeUid == inviteeUid && before.inviterUid == inviterUid
+        && before.rewardPoints == 100 && after.rewardPoints == before.rewardPoints
+        && after.diff(before).affectedKeys().hasOnly(['status', 'updatedAt', 'awardedAt'])
+        && after.createdAt == before.createdAt
+        && after.updatedAt == request.time && after.awardedAt == request.time
+        && walletAfter.pointsBalance == walletBefore.pointsBalance + 100
+        && walletAfter.lastReferralClaimId == inviteeUid
+        && walletAfter.lastReferralClaimAt == request.time
+        && walletAfter.updatedAt == request.time;
+    }
+
+    function validReferralClaimUpdate(inviteeUid) {
+      return validReferralInviteeAward(inviteeUid) || validReferralInviterClaim(inviteeUid);
     }
 
     function validDeviceClaimCreate(deviceId) {
@@ -176,7 +335,8 @@ service cloud.firestore {
       let before = resource.data;
       let after = request.resource.data;
       let requestId = after.lastWithdrawalRequestId;
-      return requestId is string
+      return validWalletShape(after, uid)
+        && requestId is string
         && requestId.size() > 0
         && existsAfter(withdrawalPath(requestId))
         && after.diff(before).affectedKeys().hasOnly([
@@ -337,7 +497,8 @@ service cloud.firestore {
       allow update: if isWorker(uid)
         && validProfile(uid)
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.consentedAt == resource.data.consentedAt;
+        && request.resource.data.consentedAt == resource.data.consentedAt
+        && request.resource.data.get('referredByUid', null) == resource.data.get('referredByUid', null);
       allow delete: if false;
     }
 
@@ -349,8 +510,15 @@ service cloud.firestore {
         && validInitialWallet(uid);
       allow update: if (isWorker(uid)
           && exists(profilePath(uid))
-          && validWalletShape(request.resource.data, uid)
-          && (validCheckInWalletUpdate(uid) || validWithdrawalWalletUpdate(uid)))
+          && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pointsBalance', 'updatedAt'])
+                && validInviteeReferralWalletUpdate(uid))
+            || (request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastCheckInAt'])
+                && validCheckInWalletUpdate(uid))
+            || (request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastWithdrawalAt', 'lastWithdrawalRequestId'])
+                && validWithdrawalWalletUpdate(uid))))
+        || (isWorker(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastReferralClaimId'])
+          && validReferralInviterWalletUpdate(uid))
         || (isAdmin() && validRefundWalletUpdate(uid));
       allow delete: if false;
     }
@@ -369,6 +537,16 @@ service cloud.firestore {
       allow create: if isWorker(request.resource.data.uid)
         && validWithdrawalRequest(request.resource.data.uid, requestId);
       allow update: if validAdminWithdrawalUpdate(requestId);
+      allow delete: if false;
+    }
+
+    match /referralClaims/{inviteeUid} {
+      allow get: if isAdmin() || (isSignedIn()
+        && (inviteeUid == request.auth.uid || resource.data.inviterUid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn()
+        && (resource.data.inviterUid == request.auth.uid || resource.data.inviteeUid == request.auth.uid));
+      allow create: if validReferralClaimCreate(inviteeUid);
+      allow update: if validReferralClaimUpdate(inviteeUid);
       allow delete: if false;
     }
   }
